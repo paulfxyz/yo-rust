@@ -5,28 +5,26 @@
 #  Usage:
 #    iwr -useb https://raw.githubusercontent.com/paulfxyz/yo-rust/main/update.ps1 | iex
 #
-#  What it does:
-#    1. Finds the currently installed yo.exe and reads its version
-#    2. Fetches the latest version number from GitHub
-#    3. Exits early if already up to date
-#    4. Downloads source ZIP, builds, and replaces the binary in-place
-#    5. Never touches your config or aliases
+#  See install.ps1 for the detailed explanation of why we do NOT use
+#  $ErrorActionPreference = "Stop" and why we check $LASTEXITCODE instead.
 # =============================================================================
 
-#Requires -Version 5.1
+$ErrorActionPreference = "Continue"
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+function Write-OK   { param($msg) Write-Host "  [ok] $msg" -ForegroundColor Green }
+function Write-Info { param($msg) Write-Host "  [..] $msg" -ForegroundColor Cyan }
+function Write-Warn { param($msg) Write-Host "  [!!] $msg" -ForegroundColor Yellow }
+function Write-Fail {
+    param($msg)
+    Write-Host "  [!!] $msg" -ForegroundColor Red
+    Write-Host "  https://github.com/paulfxyz/yo-rust/issues" -ForegroundColor DarkGray
+    Write-Host ""
+    exit 1
+}
 
-function Log-Info  { param($msg) Write-Host "  [..] $msg"  -ForegroundColor Cyan }
-function Log-OK    { param($msg) Write-Host "  [ok] $msg"  -ForegroundColor Green }
-function Log-Warn  { param($msg) Write-Host "  [!!] $msg"  -ForegroundColor Yellow }
-function Log-Error { param($msg) Write-Host "  [!!] $msg"  -ForegroundColor Red; exit 1 }
-
-$REPO_URL  = "https://github.com/paulfxyz/yo-rust"
-$RAW_BASE  = "https://raw.githubusercontent.com/paulfxyz/yo-rust/main"
-$ZIP_URL   = "https://github.com/paulfxyz/yo-rust/archive/refs/heads/main.zip"
-$TMP_DIR   = Join-Path $env:TEMP "yo-rust-update-$(Get-Random)"
+$RAW_BASE = "https://raw.githubusercontent.com/paulfxyz/yo-rust/main"
+$ZIP_URL  = "https://github.com/paulfxyz/yo-rust/archive/refs/heads/main.zip"
+$TMP_DIR  = Join-Path $env:TEMP ("yo-rust-update-" + [System.Guid]::NewGuid().ToString("N").Substring(0,8))
 
 Write-Host ""
 Write-Host "  +==========================================+" -ForegroundColor Cyan
@@ -34,96 +32,109 @@ Write-Host "  |          Updating  Yo, Rust!            |" -ForegroundColor Cyan
 Write-Host "  +==========================================+" -ForegroundColor Cyan
 Write-Host ""
 
-# -- Step 1: Find existing binary ---------------------------------------------
+# -- Find existing binary -----------------------------------------------------
+$env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","User") + ";" +
+            [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" +
+            (Join-Path $env:USERPROFILE ".cargo\bin")
+
 $YoBin = Get-Command yo -ErrorAction SilentlyContinue
-if (-not $YoBin) {
-    # Check common install location
-    $DefaultPath = Join-Path $env:LOCALAPPDATA "yo-rust\bin\yo.exe"
-    if (Test-Path $DefaultPath) {
-        $YoBinPath = $DefaultPath
-    } else {
-        Log-Warn "yo-rust does not appear to be installed."
-        Write-Host "      Install it first:" -ForegroundColor DarkGray
-        Write-Host "      iwr -useb $RAW_BASE/install.ps1 | iex" -ForegroundColor DarkGray
-        Write-Host ""
-        exit 1
-    }
-} else {
+$YoBinPath = $null
+if ($YoBin) {
     $YoBinPath = $YoBin.Source
+} else {
+    $Default = Join-Path $env:LOCALAPPDATA "yo-rust\bin\yo.exe"
+    if (Test-Path $Default) { $YoBinPath = $Default }
 }
 
-Log-OK "Found yo at: $YoBinPath"
+if (-not $YoBinPath) {
+    Write-Warn "yo-rust does not appear to be installed."
+    Write-Host "      Install first: iwr -useb $RAW_BASE/install.ps1 | iex" -ForegroundColor DarkGray
+    exit 1
+}
+Write-OK "Found: $YoBinPath"
 
-# -- Step 2: Read installed version -------------------------------------------
+# -- Read installed version from binary bytes ---------------------------------
 $InstalledVersion = "unknown"
 try {
-    # Read version string from binary content
-    $BinaryContent = [System.IO.File]::ReadAllBytes($YoBinPath)
-    $BinaryText = [System.Text.Encoding]::ASCII.GetString($BinaryContent) -replace '[^\x20-\x7E]', ' '
-    $Match = [regex]::Match($BinaryText, 'v(\d+\.\d+\.\d+)')
-    if ($Match.Success) { $InstalledVersion = $Match.Value }
+    $bytes = [System.IO.File]::ReadAllBytes($YoBinPath)
+    # Read as ASCII, replace non-printable chars with space, then regex for version
+    $text = [System.Text.Encoding]::ASCII.GetString($bytes) -replace '[^\x20-\x7E]', ' '
+    $m = [regex]::Match($text, 'v(\d+\.\d+\.\d+)')
+    if ($m.Success) { $InstalledVersion = $m.Value }
 } catch { }
 Write-Host "      Installed: $InstalledVersion" -ForegroundColor DarkGray
 
-# -- Step 3: Fetch latest version ---------------------------------------------
-Log-Info "Checking latest version on GitHub..."
+# -- Fetch latest version -----------------------------------------------------
+Write-Info "Checking latest version on GitHub..."
 try {
-    $CargoToml = (Invoke-WebRequest -Uri "$RAW_BASE/Cargo.toml" -UseBasicParsing -TimeoutSec 10).Content
-    $LatestVersion = [regex]::Match($CargoToml, 'version\s*=\s*"([^"]+)"').Groups[1].Value
+    $CargoToml = (Invoke-WebRequest -Uri "$RAW_BASE/Cargo.toml" -UseBasicParsing -TimeoutSec 15).Content
+    $m = [regex]::Match($CargoToml, '^version\s*=\s*"([^"]+)"', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+    $LatestVersion = if ($m.Success) { $m.Groups[1].Value } else { "unknown" }
 } catch {
-    Log-Error "Could not reach GitHub. Check your connection."
+    Write-Fail "Could not reach GitHub. Check your connection and try again."
 }
 Write-Host "      Latest:    v$LatestVersion" -ForegroundColor DarkGray
 
-# -- Step 4: Early exit if up to date ----------------------------------------
+# -- Early exit if already current --------------------------------------------
 if ($InstalledVersion -eq "v$LatestVersion") {
     Write-Host ""
-    Log-OK "Already up to date ($InstalledVersion). Nothing to do."
+    Write-OK "Already up to date ($InstalledVersion). Nothing to do."
     Write-Host ""
     exit 0
 }
 
 Write-Host ""
-Log-Info "Updating $InstalledVersion --> v$LatestVersion..."
+Write-Info "Updating $InstalledVersion --> v$LatestVersion..."
 Write-Host ""
 
-# -- Step 5: Ensure Rust is available ----------------------------------------
-$env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + $env:PATH
+# -- Ensure Rust ---------------------------------------------------------------
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-    Log-Error "Rust/Cargo not found. Run install.ps1 to reinstall (it will install Rust)."
+    Write-Fail "Rust/cargo not found. Run install.ps1 to reinstall."
 }
 
-# -- Step 6: Download and build -----------------------------------------------
+# -- Download and extract source ZIP ------------------------------------------
 New-Item -ItemType Directory -Force -Path $TMP_DIR | Out-Null
-Log-Info "Downloading latest source..."
+Write-Info "Downloading latest source..."
+
+$ZipDest = Join-Path $TMP_DIR "yo-rust.zip"
 try {
-    $ZipPath = Join-Path $TMP_DIR "yo-rust.zip"
-    Invoke-WebRequest -Uri $ZIP_URL -OutFile $ZipPath -UseBasicParsing
-    Expand-Archive -Path $ZipPath -DestinationPath $TMP_DIR -Force
-    Remove-Item $ZipPath -Force
+    $WebClient = New-Object System.Net.WebClient
+    $WebClient.DownloadFile($ZIP_URL, $ZipDest)
 } catch {
-    Log-Error "Download failed: $_"
+    Write-Fail "Download failed: $_"
 }
+
+Expand-Archive -Path $ZipDest -DestinationPath $TMP_DIR -Force
+Remove-Item $ZipDest -Force -ErrorAction SilentlyContinue
 
 $SrcDir = Join-Path $TMP_DIR "yo-rust-main"
 if (-not (Test-Path $SrcDir)) {
     $SrcDir = (Get-ChildItem $TMP_DIR -Directory | Select-Object -First 1).FullName
 }
 
-Log-Info "Building release binary..."
+# -- Build (same pattern as install.ps1: no 2>&1, check $LASTEXITCODE) --------
+Write-Info "Building release binary..."
+Write-Host "      cargo output will appear below. This is normal." -ForegroundColor DarkGray
+Write-Host ""
+
 Push-Location $SrcDir
-& cargo build --release 2>&1 | Out-Null
+& cargo build --release
+$BuildExit = $LASTEXITCODE
 Pop-Location
 
-$NewBinary = Join-Path $SrcDir "target\release\yo.exe"
-if (-not (Test-Path $NewBinary)) {
-    Log-Error "Build succeeded but yo.exe not found. Please open an issue at $REPO_URL/issues"
+if ($BuildExit -ne 0) {
+    Write-Fail "Build failed (exit $BuildExit). See output above for details."
 }
-Log-OK "Build complete."
 
-# -- Step 7: Replace binary ---------------------------------------------------
-Copy-Item -Path $NewBinary -Destination $YoBinPath -Force
-Log-OK "Binary updated at: $YoBinPath"
+$NewBin = Join-Path $SrcDir "target\release\yo.exe"
+if (-not (Test-Path $NewBin)) {
+    Write-Fail "Build succeeded but yo.exe not found."
+}
+Write-OK "Build complete."
+
+# -- Replace binary in-place --------------------------------------------------
+Copy-Item -Path $NewBin -Destination $YoBinPath -Force
+Write-OK "Updated: $YoBinPath"
 
 # -- Cleanup ------------------------------------------------------------------
 Remove-Item -Recurse -Force $TMP_DIR -ErrorAction SilentlyContinue

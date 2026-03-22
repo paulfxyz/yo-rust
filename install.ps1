@@ -1,67 +1,87 @@
 # =============================================================================
-#  install.ps1 -- Install yo-rust on Windows (PowerShell 5+ / PowerShell 7+)
+#  install.ps1 -- Install yo-rust on Windows (PowerShell 5.1+ / PowerShell 7+)
 #  https://github.com/paulfxyz/yo-rust
 #
-#  Usage -- run this in any PowerShell window (PS5 or PS7):
-#
+#  Usage -- paste this into any PowerShell window:
 #    iwr -useb https://raw.githubusercontent.com/paulfxyz/yo-rust/main/install.ps1 | iex
 #
-#  Or save locally and run:
-#
+#  Or save and run:
 #    powershell -ExecutionPolicy Bypass -File install.ps1
 #
-#  WHY THIS SCRIPT EXISTS
-#  ──────────────────────
-#  On Windows, `curl` is an alias for Invoke-WebRequest, not the real curl
-#  binary.  Invoke-WebRequest does not accept -fsSL flags, so the Unix install
-#  command (curl -fsSL ... | bash) fails immediately in PowerShell.
-#  Additionally, `bash` is not available in native Windows PowerShell without
-#  Git Bash or WSL2 installed, so even if the download succeeded, the script
-#  could not run.
+#  Tested on:
+#    Windows PowerShell 5.1 (Desktop edition, built into Windows)
+#    PowerShell 7.x (pwsh, cross-platform)
 #
-#  This script is the native Windows equivalent of yo.sh.  It does the same
-#  job using only PowerShell built-ins (Invoke-WebRequest, Expand-Archive,
-#  Start-Process) and winget/cargo for Rust installation.
+#  IMPORTANT: WHY WE DO NOT USE $ErrorActionPreference = "Stop"
+#  ─────────────────────────────────────────────────────────────
+#  In PowerShell 5.1, any stderr output from a native executable (cargo.exe,
+#  rustup-init.exe, git.exe) is captured as an ErrorRecord.  When
+#  $ErrorActionPreference is "Stop", the first ErrorRecord terminates the
+#  script — even when the native command actually succeeded (exit code 0).
 #
-#  WHAT IT DOES
-#  ────────────
-#  1. Detects if yo is already installed and shows the current version
-#  2. Checks for Rust/Cargo -- installs via rustup-init.exe if missing
-#  3. Clones (or downloads ZIP of) the repo and builds a release binary
-#  4. Installs yo.exe to a user-writable location added to $PATH
-#  5. Sets yo, hi, hello as PowerShell aliases via $PROFILE
+#  cargo.exe writes progress messages ("Updating crates.io index", "Compiling
+#  foo v1.0") to stderr even on a completely successful build.  Under Stop
+#  mode this immediately kills the script with a TerminatingError before the
+#  build even finishes.
 #
-#  INSTALL LOCATION
-#  ────────────────
-#  Default: $env:LOCALAPPDATA\yo-rust\bin\yo.exe
-#  This is always user-writable (no UAC prompt needed).
-#  The directory is added to $env:PATH in $PROFILE for the current user.
-#
-#  EXECUTION POLICY NOTE
-#  ─────────────────────
-#  If you get "running scripts is disabled on this system":
-#    Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
-#  Or run the one-liner with:
-#    powershell -ExecutionPolicy Bypass -Command "iwr -useb URL | iex"
+#  Solution: keep $ErrorActionPreference = "Continue" (the default) throughout.
+#  We check $LASTEXITCODE after every native command call.  This is the correct
+#  and idiomatic way to handle native-executable errors in PowerShell.
 # =============================================================================
 
-#Requires -Version 5.1
+# Do NOT use Set-StrictMode or $ErrorActionPreference = "Stop" here.
+# See the long comment above.
+$ErrorActionPreference = "Continue"
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+# -- Colour helpers -----------------------------------------------------------
+# We use Write-Host directly (not echo / Write-Output) so output goes to the
+# host and is not captured by the pipeline when running via | iex.
+function Write-Banner { param($msg) Write-Host "  $msg" -ForegroundColor Cyan }
+function Write-OK     { param($msg) Write-Host "  [ok] $msg" -ForegroundColor Green }
+function Write-Info   { param($msg) Write-Host "  [..] $msg" -ForegroundColor Cyan }
+function Write-Warn   { param($msg) Write-Host "  [!!] $msg" -ForegroundColor Yellow }
+function Write-Fail   {
+    param($msg)
+    Write-Host "  [!!] $msg" -ForegroundColor Red
+    Write-Host "" 
+    Write-Host "  If this keeps happening, please open an issue:" -ForegroundColor DarkGray
+    Write-Host "  https://github.com/paulfxyz/yo-rust/issues" -ForegroundColor DarkGray
+    Write-Host ""
+    # Use exit with a non-zero code so callers can detect failure.
+    # We cannot use "throw" here because we are running inside | iex which
+    # swallows unhandled exceptions silently in PS5.
+    exit 1
+}
 
-# -- Colours via Write-Host ---------------------------------------------------
-function Log-Info  { param($msg) Write-Host "  [..] $msg"  -ForegroundColor Cyan }
-function Log-OK    { param($msg) Write-Host "  [ok] $msg"  -ForegroundColor Green }
-function Log-Warn  { param($msg) Write-Host "  [!!] $msg"  -ForegroundColor Yellow }
-function Log-Error { param($msg) Write-Host "  [!!] $msg"  -ForegroundColor Red; exit 1 }
+# -- Helper: run a native command and check $LASTEXITCODE --------------------
+# This is the correct PS idiom for native commands.  We do NOT rely on
+# $ErrorActionPreference to detect failures -- we check $LASTEXITCODE explicitly.
+function Invoke-Native {
+    param(
+        [string]$Description,
+        [scriptblock]$Command
+    )
+    & $Command
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "$Description failed (exit code $LASTEXITCODE)"
+    }
+}
 
 # -- Constants ----------------------------------------------------------------
-$REPO_URL   = "https://github.com/paulfxyz/yo-rust"
-$RAW_BASE   = "https://raw.githubusercontent.com/paulfxyz/yo-rust/main"
-$ZIP_URL    = "https://github.com/paulfxyz/yo-rust/archive/refs/heads/main.zip"
+$REPO_URL  = "https://github.com/paulfxyz/yo-rust"
+$RAW_BASE  = "https://raw.githubusercontent.com/paulfxyz/yo-rust/main"
+$ZIP_URL   = "https://github.com/paulfxyz/yo-rust/archive/refs/heads/main.zip"
 $INSTALL_DIR = Join-Path $env:LOCALAPPDATA "yo-rust\bin"
-$TMP_DIR    = Join-Path $env:TEMP "yo-rust-install-$(Get-Random)"
+$TMP_DIR   = Join-Path $env:TEMP ("yo-rust-install-" + [System.Guid]::NewGuid().ToString("N").Substring(0,8))
+
+# Ensure tmp dir is cleaned up on exit (success or failure)
+# We register a cleanup action that runs when the script exits
+$script:TmpDirToClean = $TMP_DIR
+Register-EngineEvent -SourceIdentifier ([System.Management.Automation.PsEngineEvent]::Exiting) -Action {
+    if ($script:TmpDirToClean -and (Test-Path $script:TmpDirToClean)) {
+        Remove-Item -Recurse -Force $script:TmpDirToClean -ErrorAction SilentlyContinue
+    }
+} -SupportEvent | Out-Null
 
 # -- Banner -------------------------------------------------------------------
 Write-Host ""
@@ -71,141 +91,184 @@ Write-Host "  +==========================================+" -ForegroundColor Cya
 Write-Host ""
 
 # -- Step 1: Detect existing install ------------------------------------------
-$ExistingBin = Get-Command yo -ErrorAction SilentlyContinue
-if ($ExistingBin) {
-    # Try to extract version from the binary using Select-String
-    $ExistingVersion = try {
-        $str = & strings $ExistingBin.Source 2>$null | Select-String -Pattern 'v\d+\.\d+\.\d+' | Select-Object -First 1
-        if ($str) { $str.Matches[0].Value } else { "unknown" }
-    } catch { "unknown" }
-    Log-Warn "yo is already installed at $($ExistingBin.Source) ($ExistingVersion)"
+$ExistingYo = Get-Command yo -ErrorAction SilentlyContinue
+if ($ExistingYo) {
+    Write-Warn "yo is already installed at $($ExistingYo.Source)"
     Write-Host "      Reinstalling will replace the binary. Your config is safe." -ForegroundColor DarkGray
     Write-Host ""
 }
 
-# Fetch latest version from Cargo.toml for display
+# -- Show target version ------------------------------------------------------
 try {
-    $CargoToml = (Invoke-WebRequest -Uri "$RAW_BASE/Cargo.toml" -UseBasicParsing -TimeoutSec 10).Content
-    $LatestVersion = [regex]::Match($CargoToml, 'version\s*=\s*"([^"]+)"').Groups[1].Value
-    Write-Host "      Target version: v$LatestVersion" -ForegroundColor DarkGray
-    Write-Host ""
+    $CargoTomlContent = (Invoke-WebRequest -Uri "$RAW_BASE/Cargo.toml" -UseBasicParsing -TimeoutSec 15).Content
+    $VersionMatch = [regex]::Match($CargoTomlContent, '^version\s*=\s*"([^"]+)"', [System.Text.RegularExpressions.RegexOptions]::Multiline)
+    if ($VersionMatch.Success) {
+        $TargetVersion = $VersionMatch.Groups[1].Value
+        Write-Host "      Target version: v$TargetVersion" -ForegroundColor DarkGray
+        Write-Host ""
+    }
 } catch {
-    $LatestVersion = "latest"
+    # Non-fatal — version display is cosmetic
 }
 
-# -- Step 2: Check / install Rust ---------------------------------------------
-$CargoExe = Get-Command cargo -ErrorAction SilentlyContinue
-if (-not $CargoExe) {
-    # Try refreshing PATH (Rust may have just been installed in this session)
-    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" + $env:PATH
-    $CargoExe = Get-Command cargo -ErrorAction SilentlyContinue
-}
+# -- Step 2: Ensure Rust / Cargo is available ---------------------------------
+# Refresh PATH in case Rust was installed earlier in this session
+$UserPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
+$MachinePath = [System.Environment]::GetEnvironmentVariable("PATH", "Machine")
+$CargoBinPath = Join-Path $env:USERPROFILE ".cargo\bin"
+$env:PATH = "$UserPath;$MachinePath;$CargoBinPath"
 
-if (-not $CargoExe) {
-    Log-Warn "Rust not found. Installing via rustup..."
+$CargoCmd = Get-Command cargo -ErrorAction SilentlyContinue
+
+if (-not $CargoCmd) {
+    Write-Warn "Rust not found. Installing via rustup..."
     Write-Host "      Downloading rustup-init.exe..." -ForegroundColor DarkGray
 
-    $RustupInstaller = Join-Path $env:TEMP "rustup-init.exe"
+    $RustupPath = Join-Path $env:TEMP "rustup-init-$([System.Guid]::NewGuid().ToString('N').Substring(0,6)).exe"
     try {
-        Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile $RustupInstaller -UseBasicParsing
+        # Invoke-WebRequest can be slow on PS5 — use .NET directly for reliability
+        $WebClient = New-Object System.Net.WebClient
+        $WebClient.DownloadFile("https://win.rustup.rs/x86_64", $RustupPath)
     } catch {
-        Log-Error "Could not download rustup-init.exe. Check your internet connection."
+        Write-Fail "Could not download rustup-init.exe: $_`n  Check your internet connection."
     }
 
-    # Run rustup in quiet mode, install stable toolchain, no PATH modification yet
-    $RustupProcess = Start-Process -FilePath $RustupInstaller `
-        -ArgumentList "-y", "--quiet", "--default-toolchain", "stable" `
+    Write-Host "      Installing Rust (this may take a few minutes)..." -ForegroundColor DarkGray
+
+    # Run rustup-init synchronously.
+    # -y = accept defaults, --quiet = minimal output
+    # We use Start-Process with -Wait so we can check ExitCode cleanly.
+    $RustupProc = Start-Process -FilePath $RustupPath `
+        -ArgumentList "--quiet", "-y", "--default-toolchain", "stable", "--profile", "minimal" `
         -Wait -PassThru -NoNewWindow
-    Remove-Item $RustupInstaller -Force -ErrorAction SilentlyContinue
+    Remove-Item $RustupPath -Force -ErrorAction SilentlyContinue
 
-    if ($RustupProcess.ExitCode -ne 0) {
-        Log-Error "Rust installation failed. Install manually from https://rustup.rs"
+    if ($RustupProc.ExitCode -ne 0) {
+        Write-Fail "rustup-init.exe exited with code $($RustupProc.ExitCode). Install Rust manually from https://rustup.rs"
     }
 
-    # Reload PATH to pick up cargo
-    $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "User") + ";" +
-                [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" +
-                (Join-Path $env:USERPROFILE ".cargo\bin")
+    # Reload PATH after rustup install
+    $UserPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
+    $env:PATH = "$UserPath;$MachinePath;$CargoBinPath"
 
-    $CargoExe = Get-Command cargo -ErrorAction SilentlyContinue
-    if (-not $CargoExe) {
-        Log-Error "Cargo still not found after Rust install. Please restart PowerShell and re-run this script."
+    $CargoCmd = Get-Command cargo -ErrorAction SilentlyContinue
+    if (-not $CargoCmd) {
+        Write-Fail "Cargo still not in PATH after Rust install.`n  Please close and reopen PowerShell, then re-run this script."
     }
-    Log-OK "Rust installed."
+
+    Write-OK "Rust installed."
 } else {
-    $RustVersion = (& rustc --version 2>&1)
-    Log-OK "Rust: $RustVersion"
+    # Show Rust version.
+    # IMPORTANT: capture output WITHOUT 2>&1 redirection on PS5.
+    # 2>&1 in PS5 converts stderr lines to ErrorRecord objects which trigger
+    # Stop behaviour even with $ErrorActionPreference = "Continue".
+    $RustVersion = & rustc --version
+    Write-OK "Rust: $RustVersion"
 }
 
-# -- Step 3: Download source ZIP and build ------------------------------------
-Log-Info "Downloading yo-rust source..."
+# -- Step 3: Download source as ZIP ------------------------------------------
+# We use ZIP download instead of `git clone` so that Git is not required.
+# This also avoids git.exe stderr output triggering PS5 issues.
+Write-Info "Downloading yo-rust source..."
+New-Item -ItemType Directory -Force -Path $TMP_DIR | Out-Null
+
+$ZipDest = Join-Path $TMP_DIR "yo-rust.zip"
 try {
-    New-Item -ItemType Directory -Force -Path $TMP_DIR | Out-Null
-    $ZipPath = Join-Path $TMP_DIR "yo-rust.zip"
-    Invoke-WebRequest -Uri $ZIP_URL -OutFile $ZipPath -UseBasicParsing
-    Expand-Archive -Path $ZipPath -DestinationPath $TMP_DIR -Force
-    Remove-Item $ZipPath -Force
+    # Use .NET WebClient for reliable binary download on PS5
+    # Invoke-WebRequest -OutFile can fail silently on slow connections in PS5
+    $WebClient = New-Object System.Net.WebClient
+    $WebClient.DownloadFile($ZIP_URL, $ZipDest)
 } catch {
-    Log-Error "Could not download source: $_"
+    Write-Fail "Could not download source ZIP: $_"
 }
 
-# The extracted folder is named yo-rust-main
+if (-not (Test-Path $ZipDest) -or (Get-Item $ZipDest).Length -lt 1000) {
+    Write-Fail "Downloaded ZIP appears empty or missing. Check your internet connection."
+}
+
+try {
+    Expand-Archive -Path $ZipDest -DestinationPath $TMP_DIR -Force
+} catch {
+    Write-Fail "Could not extract ZIP: $_"
+}
+Remove-Item $ZipDest -Force -ErrorAction SilentlyContinue
+
+# The ZIP extracts to a folder named yo-rust-main
 $SrcDir = Join-Path $TMP_DIR "yo-rust-main"
 if (-not (Test-Path $SrcDir)) {
-    # Fallback: find whatever directory was created
-    $SrcDir = (Get-ChildItem $TMP_DIR -Directory | Select-Object -First 1).FullName
+    # Fallback: find any subdirectory (in case GitHub changes the ZIP structure)
+    $Found = Get-ChildItem $TMP_DIR -Directory | Select-Object -First 1
+    if ($Found) {
+        $SrcDir = $Found.FullName
+    } else {
+        Write-Fail "Could not find extracted source directory in $TMP_DIR"
+    }
 }
 
-Log-Info "Building release binary (first build ~2 min, reinstalls are faster)..."
-try {
-    Push-Location $SrcDir
-    $BuildResult = & cargo build --release 2>&1
-    Pop-Location
-} catch {
-    Pop-Location -ErrorAction SilentlyContinue
-    Log-Error "Build failed: $_"
+# -- Step 4: Build the release binary -----------------------------------------
+Write-Info "Building release binary (~2 min on first build, much faster after)..."
+Write-Host "      You will see cargo's build output below. This is normal." -ForegroundColor DarkGray
+Write-Host ""
+
+Push-Location $SrcDir
+
+# CRITICAL: Do NOT use 2>&1 or | Out-Null here.
+# cargo.exe writes progress to stderr on a successful build.
+# In PS5, capturing stderr with 2>&1 converts those lines to ErrorRecord
+# objects and -- even with $ErrorActionPreference = "Continue" -- can cause
+# the pipeline to misbehave.
+# 
+# We let cargo's stdout and stderr flow directly to the host (no redirection),
+# then check $LASTEXITCODE afterward.  This is the only reliable method for
+# running long-running native build tools in PS5.
+& cargo build --release
+
+$BuildExitCode = $LASTEXITCODE
+Pop-Location
+
+if ($BuildExitCode -ne 0) {
+    Write-Fail "cargo build --release failed (exit code $BuildExitCode).`n  Run the build manually in $SrcDir to see full error output."
 }
 
+Write-Host ""
 $BinaryPath = Join-Path $SrcDir "target\release\yo.exe"
 if (-not (Test-Path $BinaryPath)) {
-    Log-Error "Build succeeded but yo.exe not found at expected location. Please open an issue at $REPO_URL/issues"
+    Write-Fail "Build reported success but yo.exe not found at $BinaryPath. Please open an issue."
 }
-Log-OK "Build complete."
+Write-OK "Build complete."
 
-# -- Step 4: Install binary ---------------------------------------------------
-# Use the existing install location if reinstalling, otherwise use LOCALAPPDATA
-if ($ExistingBin -and (Test-Path $ExistingBin.Source)) {
-    $TargetDir = Split-Path $ExistingBin.Source
-    $TargetPath = $ExistingBin.Source
+# -- Step 5: Install binary ---------------------------------------------------
+# Use existing install location if reinstalling; otherwise use LOCALAPPDATA.
+if ($ExistingYo -and (Test-Path $ExistingYo.Source)) {
+    $TargetDir  = Split-Path $ExistingYo.Source
+    $TargetPath = $ExistingYo.Source
 } else {
-    $TargetDir = $INSTALL_DIR
+    $TargetDir  = $INSTALL_DIR
     $TargetPath = Join-Path $INSTALL_DIR "yo.exe"
 }
 
 New-Item -ItemType Directory -Force -Path $TargetDir | Out-Null
 Copy-Item -Path $BinaryPath -Destination $TargetPath -Force
-Log-OK "Installed: $TargetPath"
+Write-OK "Installed: $TargetPath"
 
-# -- Step 5: Add install directory to PATH ------------------------------------
-$UserPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
-if ($UserPath -notlike "*$TargetDir*") {
-    [System.Environment]::SetEnvironmentVariable(
-        "PATH",
-        "$UserPath;$TargetDir",
-        "User"
-    )
-    # Also update PATH for the current session immediately
+# -- Step 6: Add install directory to user PATH --------------------------------
+$CurrentUserPath = [System.Environment]::GetEnvironmentVariable("PATH", "User")
+if ($CurrentUserPath -notlike "*$TargetDir*") {
+    $NewUserPath = $CurrentUserPath.TrimEnd(";") + ";$TargetDir"
+    [System.Environment]::SetEnvironmentVariable("PATH", $NewUserPath, "User")
     $env:PATH = "$env:PATH;$TargetDir"
-    Log-OK "Added $TargetDir to your user PATH."
+    Write-OK "Added $TargetDir to your user PATH."
 } else {
-    Log-OK "PATH already includes $TargetDir"
+    Write-OK "PATH already contains $TargetDir"
 }
 
-# -- Step 6: PowerShell aliases in $PROFILE -----------------------------------
-# We add aliases to $PROFILE so `yo`, `hi`, and `hello` all work in future PS sessions.
-# We also create the alias for the current session immediately.
+# -- Step 7: PowerShell aliases in $PROFILE ------------------------------------
+# Set-Alias does not persist across sessions on its own — it must be in $PROFILE.
+Set-Alias -Name yo    -Value $TargetPath -Option AllScope -Scope Global -ErrorAction SilentlyContinue
+Set-Alias -Name hi    -Value $TargetPath -Option AllScope -Scope Global -ErrorAction SilentlyContinue
+Set-Alias -Name hello -Value $TargetPath -Option AllScope -Scope Global -ErrorAction SilentlyContinue
 
-$AliasBlock = @"
+$AliasLines = @"
 
 # yo-rust aliases -- added by install.ps1
 Set-Alias -Name yo    -Value "$TargetPath" -Option AllScope -Scope Global
@@ -213,30 +276,28 @@ Set-Alias -Name hi    -Value "$TargetPath" -Option AllScope -Scope Global
 Set-Alias -Name hello -Value "$TargetPath" -Option AllScope -Scope Global
 "@
 
-# Set for this session immediately
-Set-Alias -Name yo    -Value $TargetPath -Option AllScope -Scope Global -ErrorAction SilentlyContinue
-Set-Alias -Name hi    -Value $TargetPath -Option AllScope -Scope Global -ErrorAction SilentlyContinue
-Set-Alias -Name hello -Value $TargetPath -Option AllScope -Scope Global -ErrorAction SilentlyContinue
-
-# Persist to $PROFILE
 if ($PROFILE) {
-    # Create profile file if it doesn't exist
+    $ProfileDir = Split-Path $PROFILE
+    if ($ProfileDir -and -not (Test-Path $ProfileDir)) {
+        New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
+    }
     if (-not (Test-Path $PROFILE)) {
         New-Item -ItemType File -Force -Path $PROFILE | Out-Null
     }
+
     $ProfileContent = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
     if (-not ($ProfileContent -like "*yo-rust aliases*")) {
-        Add-Content -Path $PROFILE -Value $AliasBlock
-        Log-OK "Aliases added to $PROFILE  (yo / hi / hello)"
+        Add-Content -Path $PROFILE -Value $AliasLines
+        Write-OK "Aliases added to $PROFILE  (yo / hi / hello)"
     } else {
-        Log-OK "Aliases already present in $PROFILE"
+        Write-OK "Aliases already in $PROFILE"
     }
 } else {
-    Log-Warn "Could not determine PowerShell profile path. Add aliases manually:"
+    Write-Warn "Could not locate PowerShell profile. Add manually:"
     Write-Host "      Set-Alias -Name yo -Value `"$TargetPath`"" -ForegroundColor DarkGray
 }
 
-# -- Step 7: Cleanup ----------------------------------------------------------
+# -- Step 8: Cleanup ----------------------------------------------------------
 Remove-Item -Recurse -Force $TMP_DIR -ErrorAction SilentlyContinue
 
 # -- Done ---------------------------------------------------------------------
@@ -245,14 +306,12 @@ Write-Host "  +==========================================+" -ForegroundColor Cya
 Write-Host "  |        Installation complete!           |" -ForegroundColor Cyan
 Write-Host "  +==========================================+" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Type  " -NoNewline
+Write-Host "  You can type  " -NoNewline
 Write-Host "yo" -ForegroundColor Cyan -NoNewline
-Write-Host "  to start. (Works in this window already.)"
+Write-Host "  right now in this window."
 Write-Host ""
-Write-Host "  For future windows, restart PowerShell so PATH updates take effect." -ForegroundColor DarkGray
+Write-Host "  In new PowerShell windows: restart for PATH changes to take effect." -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  Update:    " -NoNewline -ForegroundColor DarkGray
-Write-Host "iwr -useb $RAW_BASE/update.ps1 | iex" -ForegroundColor DarkGray
-Write-Host "  Uninstall: " -NoNewline -ForegroundColor DarkGray
-Write-Host "iwr -useb $RAW_BASE/uninstall.ps1 | iex" -ForegroundColor DarkGray
+Write-Host "  Update:    iwr -useb $RAW_BASE/update.ps1 | iex" -ForegroundColor DarkGray
+Write-Host "  Uninstall: iwr -useb $RAW_BASE/uninstall.ps1 | iex" -ForegroundColor DarkGray
 Write-Host ""

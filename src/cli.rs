@@ -47,7 +47,7 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(
     name    = "yo",
-    version = "2.1.0",
+    version = "2.2.0",
     about   = "Natural language terminal assistant powered by AI.",
     long_about = None,
 )]

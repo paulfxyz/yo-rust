@@ -4,6 +4,76 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [2.2.0] — 2026-03-22
+
+### 🐛 Fixed — Windows PS5.1 `TerminatingError` on `cargo build`
+
+Root cause (Wayne's machine: Windows 11, PowerShell 5.1.26100.7920 Desktop edition):
+
+In PowerShell 5.1, any output to `stderr` from a native executable is captured
+as an `ErrorRecord` object.  `cargo.exe` writes all progress output
+("Updating crates.io index", "Compiling foo v1.0", etc.) to **stderr** even on
+a completely successful build.  The previous `install.ps1` used:
+
+```powershell
+$ErrorActionPreference = "Stop"   # ← root cause
+Set-StrictMode -Version Latest
+... & cargo build --release 2>&1 | Out-Null  # ← amplified the problem
+```
+
+The `2>&1` redirection converted cargo's stderr lines into `ErrorRecord` objects.
+With `Stop` mode active, the very first progress line from cargo immediately
+triggered a `TerminatingError` and killed the script before the build completed.
+
+Fix applied to `install.ps1` and `update.ps1`:
+- Removed `$ErrorActionPreference = "Stop"` — kept at the default `"Continue"`
+- Removed `Set-StrictMode -Version Latest` — this is a script, not a module
+- Removed ALL `2>&1` and `| Out-Null` from native command calls
+- Let `cargo` stdout and stderr flow directly to the host (visible output)
+- Check `$LASTEXITCODE` after every native command — the correct PS idiom
+- Used `System.Net.WebClient` instead of `Invoke-WebRequest -OutFile` for
+  binary downloads — more reliable on PS5 with slow connections
+- Used `Start-Process -Wait -PassThru` for `rustup-init.exe` so exit code
+  is inspectable without triggering ErrorRecord issues
+- Added `Register-EngineEvent Exiting` cleanup so temp dir is always removed
+- Added helpful comment block in `install.ps1` explaining the root cause for
+  future contributors
+
+### ✨ New — Named command shortcuts (Wayne's feature request)
+
+Save any command set as a named shortcut, then replay it instantly with one
+word — no AI call, no confirmation prompt.
+
+**Usage:**
+```
+yo ›  docker restart mycontainer
+  ✔  Done.
+  Did that work? [Y/n] › Y
+
+yo ›  !save restartdocker
+  ✔  Saved as !restartdocker
+
+# Later, any time:
+yo ›  !restartdocker
+  ◈  Running shortcut !restartdocker
+  ►  docker restart mycontainer
+  ✔  Done.
+```
+
+- `!save <name>` — save last confirmed command(s) under this name
+- `!<name>` — run the saved shortcut instantly (no AI, no confirmation)
+- `!forget <name>` — remove a shortcut
+- `!shortcuts` / `!sc` — list all saved shortcuts
+- Shortcuts are persisted to `~/.config/yo-rust/shortcuts.json`
+- Names are case-insensitive, alphanumeric + `-` + `_` only
+- Multi-command shortcuts supported (saves all commands from the last run)
+- Shortcuts are also recorded in the conversation context for follow-up support
+- Running a shortcut appends to shell history if history is enabled
+
+New module: `src/shortcuts.rs`
+
+---
+
 ## [2.1.0] — 2026-03-22
 
 ### Root cause fixed

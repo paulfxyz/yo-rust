@@ -57,6 +57,7 @@ mod config;
 mod context;
 mod history;
 mod shell;
+mod shortcuts;
 mod ui;
 
 use clap::Parser;
@@ -102,7 +103,11 @@ fn main() {
         }
     }
 
-    // ── 5. Initialise multi-turn context window ────────────────────────────────
+    // ── 5. Load saved command shortcuts ──────────────────────────────────────
+    // Loaded once at startup; !save and !forget persist immediately to disk.
+    let mut shortcut_store = shortcuts::ShortcutStore::load();
+
+    // ── 6. Initialise multi-turn context window ────────────────────────────────
     // Capacity is config.context_size (default 5), or 0 if --no-context passed.
     let ctx_size = if args.no_context { 0 } else { cfg.context_size };
     let mut conversation = context::ConversationContext::new(ctx_size);
@@ -164,6 +169,10 @@ fn main() {
                 println!("{}", "  ✔  Config updated.".green());
                 continue;
             }
+            "!shortcuts" | "!sc" => {
+                shortcut_store.print_all();
+                continue;
+            }
             "!context" | "!ctx" => {
                 ui::print_context_summary(&conversation);
                 continue;
@@ -181,7 +190,66 @@ fn main() {
             _ => {}
         }
 
-        // ── 9c. Natural-language intent detection ─────────────────────────────
+        // ── 9c. Named shortcut dispatch ──────────────────────────────────────────
+        // Checked before the AI so shortcuts are always instant (no network call).
+        match shortcuts::parse_shortcut_input(&line) {
+            shortcuts::ShortcutInput::List => {
+                shortcut_store.print_all();
+                continue;
+            }
+            shortcuts::ShortcutInput::Save(name) => {
+                // Save the most recently executed command set
+                if let Some(last_cmds) = conversation.turns().last().map(|t| {
+                    t.commands_summary
+                        .split(" ; ")
+                        .map(str::to_string)
+                        .collect::<Vec<_>>()
+                }) {
+                    match shortcut_store.save_shortcut(&name, &last_cmds) {
+                        Ok(_) => {
+                            println!("{}", format!("  ✔  Saved as !{name}  — type !{name} anytime to run instantly.", name=name).green());
+                            println!("  {}  {}", "◈".cyan(), "Commands saved:".dimmed());
+                            for cmd in &last_cmds {
+                                println!("       {}  {}", "$".dimmed(), cmd.white());
+                            }
+                        }
+                        Err(e) => eprintln!("{}", format!("  ✗  {e}").red()),
+                    }
+                } else {
+                    println!("{}", "  ◈  No commands run yet in this session — run something first.".yellow());
+                }
+                println!();
+                continue;
+            }
+            shortcuts::ShortcutInput::Forget(name) => {
+                if shortcut_store.forget(&name) {
+                    println!("{}", format!("  ✔  Shortcut !{name} removed.", name=name).green());
+                } else {
+                    println!("{}", format!("  ◈  No shortcut named !{name} found.", name=name).yellow());
+                }
+                println!();
+                continue;
+            }
+            shortcuts::ShortcutInput::Run(name) => {
+                if let Some(cmds) = shortcut_store.get(&name).cloned() {
+                    println!("{}", format!("  ◈  Running shortcut !{name}", name=name).cyan());
+                    println!();
+                    execute_commands(&cmds);
+                    if history_enabled {
+                        history::append_to_history(&cmds);
+                    }
+                    conversation.push(&format!("!{name}", name=name), &cmds);
+                } else {
+                    println!("{}", format!("  ◈  No shortcut named !{name}. Type !shortcuts to see all.", name=name).yellow());
+                    println!("  {}  {}", "◈".cyan().bold(), "Or use !save <name> after running a command to create one.".dimmed());
+                }
+                println!();
+                continue;
+            }
+            shortcuts::ShortcutInput::NotAShortcut => {}
+        }
+
+        // ── 9d. Natural-language intent detection ─────────────────────────────
         // Detected before any API call — zero latency, zero cost.
         if ai::intent_is_api_change(&line) {
             println!("{}", "  ◈  Sounds like you want to update your config.".yellow());

@@ -24,7 +24,7 @@ use colored::Colorize;
 /// Current version — single source of truth for the banner.
 /// Keep in sync with Cargo.toml `version` field.
 /// Future improvement: replace with env!("CARGO_PKG_VERSION") at compile time.
-const VERSION: &str = "v2.1.0";
+const VERSION: &str = "v2.2.0";
 
 // =============================================================================
 //  print_banner
@@ -279,8 +279,12 @@ pub fn print_help(cfg: &Config, dry_run: bool, history_enabled: bool, ctx_size: 
     let shortcuts: &[(&str, &str)] = &[
         ("!help  / !h",     "This help screen"),
         ("!api",            "Update backend, API key, model, history & context settings"),
-        ("!context / !ctx", "Show what the AI currently remembers (last N turns)"),
-        ("!clear",          "Clear conversation context — start fresh"),
+        ("!shortcuts / !sc", "List all saved command shortcuts"),
+        ("!save <name>",     "Save last ran commands as !<name> (instant replay)"),
+        ("!forget <name>",   "Delete a saved shortcut"),
+        ("!<name>",          "Run a saved shortcut instantly — no AI, no confirmation"),
+        ("!context / !ctx",  "Show what the AI currently remembers (last N turns)"),
+        ("!clear",           "Clear conversation context — start fresh"),
         ("!exit  / !q",     "Quit yo-rust"),
         ("Y / Enter",       "Confirm and run the suggested command(s)"),
         ("N",               "Skip — rephrase and try again"),
