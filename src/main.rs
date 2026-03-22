@@ -55,6 +55,7 @@ mod ai;
 mod cli;
 mod config;
 mod context;
+mod feedback;
 mod history;
 mod shell;
 mod shortcuts;
@@ -196,6 +197,17 @@ fn main() {
             }
             "!shortcuts" | "!sc" => {
                 shortcut_store.print_all();
+                continue;
+            }
+            // !feedback / !fb — telemetry & community data management
+            cmd if feedback::parse(cmd).is_some() => {
+                if let Some(fb_cmd) = feedback::parse(cmd) {
+                    if feedback::dispatch(fb_cmd, &mut cfg) {
+                        if let Err(e) = config::save(&cfg) {
+                            eprintln!("{}", format!("  ✗  Could not save: {e}").red());
+                        }
+                    }
+                }
                 continue;
             }
             "!context" | "!ctx" => {

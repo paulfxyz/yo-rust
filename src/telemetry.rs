@@ -90,9 +90,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 //   3. Creating an Access Key with only "Bins Create" permission
 //   4. Replacing this placeholder with the actual key before release
 //
-// PLACEHOLDER — replace before release:
-pub const CENTRAL_ACCESS_KEY: &str = "$2a$10$PLACEHOLDER_REPLACE_BEFORE_RELEASE";
-pub const CENTRAL_COLLECTION_ID: &str = "PLACEHOLDER_COLLECTION_ID";
+// Central write-only Access Key (Bins Create permission only — safe to embed).
+// Collection: yo-rust-telemetry  |  Created: 2026-03-22
+// Master Key is kept private (never in source) — contact hello@paulfleury.com
+pub const CENTRAL_ACCESS_KEY: &str   = "$2a$10$xJ5kER3PeMHMZKWRnJxhrehfH6wHeGURAhdmmctbLnboMhTXyJW9a";
+pub const CENTRAL_COLLECTION_ID: &str = "69c05e31b7ec241ddc91ee96";
 
 // Whether the central destination is actually configured (non-placeholder)
 pub fn central_is_configured() -> bool {

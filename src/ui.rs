@@ -24,7 +24,7 @@ use colored::Colorize;
 /// Current version — single source of truth for the banner.
 /// Keep in sync with Cargo.toml `version` field.
 /// Future improvement: replace with env!("CARGO_PKG_VERSION") at compile time.
-const VERSION: &str = "v2.3.0";
+const VERSION: &str = "v2.3.1";
 
 // =============================================================================
 //  print_banner
@@ -279,7 +279,12 @@ pub fn print_help(cfg: &Config, dry_run: bool, history_enabled: bool, ctx_size: 
     let shortcuts: &[(&str, &str)] = &[
         ("!help  / !h",     "This help screen"),
         ("!api",            "Update backend, API key, model, history & context settings"),
-        ("!shortcuts / !sc", "List all saved command shortcuts"),
+        ("!feedback  / !fb",  "Feedback & data sharing — status, setup, on/off"),
+        ("!fb setup",          "Run the full feedback setup wizard"),
+        ("!fb on / !fb off",   "Toggle community sharing instantly"),
+        ("!fb personal",       "Configure your own personal JSONBin"),
+        ("!fb about",          "Explain the data pipeline & JSONBin.io"),
+        ("!shortcuts / !sc",   "List all saved command shortcuts"),
         ("!save <name>",     "Save last ran commands as !<name> (instant replay)"),
         ("!forget <name>",   "Delete a saved shortcut"),
         ("!<name>",          "Run a saved shortcut instantly — no AI, no confirmation"),
@@ -471,5 +476,98 @@ pub fn print_context_summary(ctx: &ConversationContext) {
         )
         .dimmed()
     );
+    println!();
+}
+
+// =============================================================================
+//  print_feedback_status — show current telemetry configuration at a glance
+// =============================================================================
+pub fn print_feedback_status(cfg: &crate::config::Config) {
+    println!();
+    println!("{}", "  ╔══════════════════════════════════════════════════════╗".cyan());
+    println!("{}", "  ║         📊  Feedback & Data Sharing Status          ║".cyan().bold());
+    println!("{}", "  ╚══════════════════════════════════════════════════════╝".cyan());
+    println!();
+
+    // ── Community sharing ─────────────────────────────────────────────────────
+    let community_status = if cfg.telemetry_share_central {
+        "ON  — sharing with yo-rust community dataset".green().to_string()
+    } else {
+        "OFF — not sharing".dimmed().to_string()
+    };
+    println!("  {}  Community sharing:   {}", "◈".cyan().bold(), community_status);
+
+    // ── Personal JSONBin ──────────────────────────────────────────────────────
+    let personal_status = if !cfg.telemetry_user_key.is_empty() {
+        format!("ON  — collection: {}",
+            if cfg.telemetry_user_collection.is_empty() {
+                "not set (run !feedback to configure)".to_string()
+            } else {
+                cfg.telemetry_user_collection.clone()
+            }
+        ).green().to_string()
+    } else {
+        "OFF — no personal JSONBin configured".dimmed().to_string()
+    };
+    println!("  {}  Personal JSONBin:    {}", "◈".cyan().bold(), personal_status);
+
+    println!();
+    println!("  {}", "WHAT IS COLLECTED  (only when sharing is ON)".white().bold());
+    println!("  {}", "  ✓  Your natural-language prompt".dimmed());
+    println!("  {}", "  ✓  The commands that ran".dimmed());
+    println!("  {}", "  ✓  OS, shell, AI model, yo-rust version".dimmed());
+    println!("  {}", "  ✓  Whether it worked (your Y/N feedback)".dimmed());
+    println!();
+    println!("  {}", "WHAT IS NEVER COLLECTED".white().bold());
+    println!("  {}", "  ✗  API keys (never, ever)".dimmed());
+    println!("  {}", "  ✗  File paths or contents".dimmed());
+    println!("  {}", "  ✗  Your working directory".dimmed());
+    println!("  {}", "  ✗  Any command output".dimmed());
+    println!("  {}", "  ✗  Username, hostname, or any identity".dimmed());
+    println!();
+    println!("  {}", "ACTIONS".white().bold());
+    println!("    {}  Run the full setup wizard", "!feedback setup".yellow().bold());
+    println!("    {}  Toggle community sharing on/off", "!feedback on  /  !feedback off".yellow().bold());
+    println!("    {}  Configure your personal JSONBin", "!feedback personal".yellow().bold());
+    println!("    {}  Clear all telemetry settings", "!feedback clear".yellow().bold());
+    println!("    {}  Learn about JSONBin.io", "!feedback about".yellow().bold());
+    println!();
+    println!("  {}  {}  {}  https://jsonbin.io",
+        "◈".cyan(), "Personal JSONBin →".dimmed(), "·".dimmed());
+    println!();
+}
+
+// =============================================================================
+//  print_feedback_about — explain JSONBin and the data pipeline
+// =============================================================================
+pub fn print_feedback_about() {
+    println!();
+    println!("{}", "  ╔══════════════════════════════════════════════════════╗".cyan());
+    println!("{}", "  ║     📊  About Community Feedback & JSONBin.io       ║".cyan().bold());
+    println!("{}", "  ╚══════════════════════════════════════════════════════╝".cyan());
+    println!();
+    println!("  {}", "THE GOAL".white().bold());
+    println!("  {}", "  Every week, Paul Fleury reviews the accumulated data to see which".dimmed());
+    println!("  {}", "  prompts worked, which failed, and which OS/shell combinations need".dimmed());
+    println!("  {}", "  better system prompt rules. This directly improves yo-rust for everyone.".dimmed());
+    println!();
+    println!("  {}", "HOW THE DATA FLOWS".white().bold());
+    println!("  {}", "  1. You confirm a command worked (Y at the feedback prompt)".dimmed());
+    println!("  {}", "  2. yo-rust POSTs an anonymised JSON entry to JSONBin.io".dimmed());
+    println!("  {}", "  3. It lands in a private collection only Paul can read".dimmed());
+    println!("  {}", "  4. Paul reviews weekly → improves the system prompt → new release".dimmed());
+    println!();
+    println!("  {}", "JSONBIN.IO".white().bold());
+    println!("  {}", "  JSONBin.io is a simple JSON storage API. yo-rust uses a write-only".dimmed());
+    println!("  {}", "  Access Key — it can create bins but CANNOT read, update, or delete.".dimmed());
+    println!("  {}", "  Your entries are private and cannot be seen by other users.".dimmed());
+    println!();
+    println!("  {}", "YOUR OWN JSONBIN".white().bold());
+    println!("  {}", "  You can optionally store your own command history in your own".dimmed());
+    println!("  {}", "  JSONBin account — completely separate from the community dataset.".dimmed());
+    println!("  {}", "  Only you can read it. Useful for personal analytics.".dimmed());
+    println!();
+    println!("    {}  https://jsonbin.io  (free account, 10,000 requests)", "→".cyan());
+    println!("    {}  Run:  !feedback personal  to configure your own bin", "→".cyan());
     println!();
 }

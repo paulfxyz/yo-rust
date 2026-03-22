@@ -4,6 +4,47 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [2.3.1] — 2026-03-22
+
+### ✨ New — `!feedback` / `!fb` shortcut + live JSONBin credentials
+
+**JSONBin.io collection is now live** — the central `yo-rust-telemetry` collection
+is configured and accepting entries.  The write-only Access Key is embedded in
+the binary; no setup required from users.
+
+**New `!feedback` / `!fb` shortcut** with full subcommand UI:
+
+| Command | What it does |
+|---|---|
+| `!feedback` / `!fb` | Show current telemetry status |
+| `!feedback setup` | Full interactive setup wizard |
+| `!feedback on` | Enable community sharing in one word |
+| `!feedback off` | Disable community sharing in one word |
+| `!feedback personal` | Configure personal JSONBin (with live connectivity test) |
+| `!feedback clear` | Remove all telemetry settings |
+| `!feedback about` | Explain JSONBin and the data pipeline |
+
+New module `src/feedback.rs`:
+- `parse()` — maps `!feedback <sub>` and `!fb <sub>` to `FeedbackCommand` enum
+- `dispatch()` — runs the appropriate action, returns `bool` (config changed?)
+- Personal JSONBin wizard includes a live connectivity test: creates a bin,
+  verifies HTTP 200, then immediately deletes the test entry
+- `!feedback personal` retains current key if Enter is pressed (non-destructive)
+- `run_clear()` asks for confirmation before wiping settings
+
+`ui.rs` additions:
+- `print_feedback_status()` — colour-coded status panel with all active settings
+- `print_feedback_about()` — plain-English explanation of JSONBin and data flow
+- Help screen updated with all `!feedback` / `!fb` subcommands
+- Intro shows "Community sharing: ON (type !feedback to manage)" when active
+
+`src/telemetry.rs`:
+- `CENTRAL_ACCESS_KEY` and `CENTRAL_COLLECTION_ID` now contain real credentials
+- Collection `yo-rust-telemetry` created 2026-03-22
+- `central_is_configured()` now returns `true`
+
+---
+
 ## [2.3.0] — 2026-03-22
 
 ### ✨ New — Community data sharing & personal command history (JSONBin.io)
