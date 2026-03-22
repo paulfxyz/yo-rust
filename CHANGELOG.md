@@ -6,6 +6,23 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [1.1.1] — 2026-03-22
+
+### 🐛 Fix
+
+- **Default model changed back to `openai/gpt-4o-mini`** — the free Llama 3.3 70B tier
+  hits OpenRouter rate limits quickly under normal usage and does not follow the
+  structured JSON schema as reliably as GPT-4o-mini. Since yo-rust is designed for
+  users with a paid OpenRouter account, `gpt-4o-mini` is the better default: fast,
+  cheap (~$0.15/1M tokens), and consistently produces correct shell commands.
+- **Model selection menu reordered** — `gpt-4o-mini` is now option 1 (default),
+  followed by `gpt-4o`, `claude-3.5-sonnet`, `claude-3-haiku`, and `llama-3.3-70b-instruct:free`.
+  Free Llama moved to position 5 with a note about rate limits.
+- **Version bumped** to `1.1.1` across all files: `Cargo.toml`, `src/ui.rs` (`VERSION` const),
+  `README.md` (badge + two ASCII banner blocks + changelog heading), `CHANGELOG.md`.
+
+---
+
 ## [1.1.0] — 2026-03-22
 
 ### 📚 Documentation & Code Quality

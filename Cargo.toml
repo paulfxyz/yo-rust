@@ -1,6 +1,6 @@
 [package]
 name        = "yo-rust"
-version     = "1.1.0"
+version     = "1.1.1"
 edition     = "2021"
 authors     = ["Paul Fleury <hello@paulfleury.com>"]
 description = "Natural language terminal assistant powered by OpenRouter AI — just type 'yo'."

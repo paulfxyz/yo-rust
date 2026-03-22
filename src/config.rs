@@ -237,29 +237,29 @@ pub fn interactive_setup(cfg: &mut Config) {
     println!("  {}", "Select a model:".white().bold());
     println!(
         "  {}",
-        "  1) meta-llama/llama-3.3-70b-instruct:free   🆓 free tier, great quality".dimmed()
+        "  1) openai/gpt-4o-mini              ★ recommended — fast, cheap, reliable".dimmed()
     );
     println!(
         "  {}",
-        "  2) openai/gpt-4o-mini                       fast, cheap, reliable".dimmed()
+        "  2) openai/gpt-4o                   powerful, best for complex tasks".dimmed()
     );
     println!(
         "  {}",
-        "  3) openai/gpt-4o                            powerful, best for complex tasks".dimmed()
+        "  3) anthropic/claude-3.5-sonnet     best reasoning".dimmed()
     );
     println!(
         "  {}",
-        "  4) anthropic/claude-3-haiku                 very fast, low cost".dimmed()
+        "  4) anthropic/claude-3-haiku        very fast, low cost".dimmed()
     );
     println!(
         "  {}",
-        "  5) anthropic/claude-3.5-sonnet              best reasoning".dimmed()
+        "  5) meta-llama/llama-3.3-70b-instruct:free   free tier (may hit rate limits)".dimmed()
     );
     println!(
         "  {}",
         "  Or type any OpenRouter model slug (e.g. google/gemini-flash-1.5).".dimmed()
     );
-    println!("  {}", "  Leave blank to use option 1 (recommended for new users).".dimmed());
+    println!("  {}", "  Leave blank to use option 1 — gpt-4o-mini (recommended).".dimmed());
     println!();
 
     print!("  {}  ", "Model [1] ›".yellow().bold());
@@ -270,12 +270,15 @@ pub fn interactive_setup(cfg: &mut Config) {
     let choice = input.trim().to_string();
 
     // Map numeric shortcuts to full slugs; anything else is passed through as-is.
+    // Default (blank / "1") is gpt-4o-mini: fast, cheap, and reliably follows
+    // the JSON envelope schema. The free Llama tier can hit rate limits quickly
+    // and may not follow structured output instructions as consistently.
     cfg.model = match choice.as_str() {
-        "" | "1" => "meta-llama/llama-3.3-70b-instruct:free".to_string(),
-        "2"      => "openai/gpt-4o-mini".to_string(),
-        "3"      => "openai/gpt-4o".to_string(),
+        "" | "1" => "openai/gpt-4o-mini".to_string(),
+        "2"      => "openai/gpt-4o".to_string(),
+        "3"      => "anthropic/claude-3.5-sonnet".to_string(),
         "4"      => "anthropic/claude-3-haiku".to_string(),
-        "5"      => "anthropic/claude-3.5-sonnet".to_string(),
+        "5"      => "meta-llama/llama-3.3-70b-instruct:free".to_string(),
         custom   => custom.to_string(), // Advanced user — trust the input
     };
 

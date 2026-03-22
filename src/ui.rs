@@ -62,7 +62,7 @@ use colored::Colorize;
 /// IMPORTANT: keep this in sync with Cargo.toml `version` field.
 /// A future improvement: use env!("CARGO_PKG_VERSION") to read it at compile
 /// time from Cargo.toml automatically, eliminating the manual sync requirement.
-const VERSION: &str = "v1.1.0";
+const VERSION: &str = "v1.1.1";
 
 // =============================================================================
 //  print_banner
