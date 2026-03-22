@@ -105,7 +105,7 @@ fn main() {
         }
     }
 
-    // ── 4b. Periodic telemetry reminder ─────────────────────────────────────────
+    // ── 5. Periodic telemetry reminder ─────────────────────────────────────────
     // Every 10 sessions, if telemetry is off and user has never been asked
     // (or dismissed previously), gently remind them about community sharing.
     // We increment the counter here and save it.
@@ -129,11 +129,11 @@ fn main() {
         let _ = config::save(&cfg); // save updated counter (non-fatal if fails)
     }
 
-    // ── 5. Load saved command shortcuts ──────────────────────────────────────
+    // ── 6. Load saved command shortcuts ──────────────────────────────────────
     // Loaded once at startup; !save and !forget persist immediately to disk.
     let mut shortcut_store = shortcuts::ShortcutStore::load();
 
-    // ── 5b. Pending telemetry thread handles ─────────────────────────────────
+    // ── 7. Pending telemetry thread handles ─────────────────────────────────
     // Background HTTP threads for telemetry submissions.
     // CRITICAL: We store the JoinHandle for every spawned thread and join them
     // all before process exit.  Without this, if the user exits immediately
@@ -141,26 +141,26 @@ fn main() {
     // before any HTTP request completes — the collection stays empty.
     let mut pending_telemetry: Vec<std::thread::JoinHandle<()>> = Vec::new();
 
-    // ── 6. Initialise multi-turn context window ────────────────────────────────
+    // ── 8. Initialise multi-turn context window ────────────────────────────────
     // Capacity is config.context_size (default 5), or 0 if --no-context passed.
     let ctx_size = if args.no_context { 0 } else { cfg.context_size };
     let mut conversation = context::ConversationContext::new(ctx_size);
 
-    // ── 6. History flag resolution ────────────────────────────────────────────
+    // ── 9. History flag resolution ────────────────────────────────────────────
     // --no-history flag overrides config.history_enabled for this session.
     let history_enabled = cfg.history_enabled && !args.no_history;
 
-    // ── 7. Usage hint ─────────────────────────────────────────────────────────
+    // ── 10. Usage hint ─────────────────────────────────────────────────────────
     ui::print_intro(&cfg, args.dry_run);
 
-    // ── 8. Initialise line editor ─────────────────────────────────────────────
+    // ── 11. Initialise line editor ─────────────────────────────────────────────
     // Provides arrow key editing, Ctrl-W word delete, in-session ↑/↓ history.
     let mut rl = DefaultEditor::new().unwrap_or_else(|e| {
         eprintln!("{}", format!("  ✗  Readline init failed: {e}").red());
         process::exit(1);
     });
 
-    // ── 9. Main REPL loop ─────────────────────────────────────────────────────
+    // ── 12. Main REPL loop ─────────────────────────────────────────────────────
     loop {
         // ── 9a. Read input ────────────────────────────────────────────────────
         let context_indicator = if !conversation.is_empty() {
@@ -193,7 +193,11 @@ fn main() {
                 for h in pending_telemetry { let _ = h.join(); }
                 return;
             }
-            Err(e) => { eprintln!("{}", format!("  ✗  Input error: {e}").red()); break; }
+            Err(e) => {
+                eprintln!("{}", format!("  ✗  Input error: {e}").red());
+                for h in pending_telemetry { let _ = h.join(); }
+                return;
+            }
         };
 
         if line.is_empty() { continue; }

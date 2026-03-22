@@ -4,6 +4,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) · Versioning: 
 
 ---
 
+## [2.3.3] — 2026-03-22
+
+### 🔍 Code audit — zero clippy warnings, all logic paths verified
+
+**`src/telemetry.rs` — complete rewrite:**
+- Fixed the remaining `posted_any` logic bug: debug path was consuming the
+  HTTP response body before the success check, so `posted_any` was never set
+  to `true` in debug mode. Refactored to read status first, then read body
+  conditionally in debug mode only.
+- Fixed `is_none_or` clippy warning (was `map_or(true, ...)`).
+- Fixed three `is_multiple_of()` clippy warnings in `is_leap()` (was `year % 4 == 0`).
+- Removed orphaned comment `// Fix: we check success... (refactored below)` that
+  referenced incomplete work from a previous iteration.
+- `submit()`: clean separation of central vs personal paths, identical structure,
+  no code duplication, debug output consistent across both paths.
+- `submit_background()`: uses `is_some_and()` instead of `map_or()` for has_personal check.
+- Full doc comments on every public item, method, and constant.
+- Table-format privacy summary in module header.
+
+**`src/main.rs` — step numbering and exit paths:**
+- Fixed duplicate step numbers (two "6." and a "5b.") — renumbered 1–12 cleanly.
+- Fixed the `Err(e) => break` input error exit path which was not joining pending
+  telemetry handles before returning. Now all four exit paths join handles:
+  Ctrl-D (EOF), Ctrl-C (Interrupted), input error, and `!exit`.
+
+**`src/ui.rs` — clippy auto-fixes:**
+- Three `print_literal` warnings fixed: string literals in `println!("  {}  {}", key, literal)`
+  simplified to `println!("    {}  literal", key)`.
+
+**README — major expansion:**
+- New `Why Rust` section: binary size, performance, memory safety, type system,
+  cargo, ecosystem, and why Rust works well for CLI tools (not just systems code).
+- `Lessons learned` section expanded into a complete reference: LLM prompt
+  engineering, Rust idioms for CLI tools, Windows-specific findings, telemetry
+  pipeline lessons. Each lesson is a real observation from building this project.
+- All existing architecture sections expanded with more depth.
+
+---
+
 ## [2.3.2] — 2026-03-22
 
 ### 🐛 Fixed — Telemetry entries not appearing in JSONBin dashboard

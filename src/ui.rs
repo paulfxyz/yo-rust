@@ -24,7 +24,7 @@ use colored::Colorize;
 /// Current version — single source of truth for the banner.
 /// Keep in sync with Cargo.toml `version` field.
 /// Future improvement: replace with env!("CARGO_PKG_VERSION") at compile time.
-const VERSION: &str = "v2.3.2";
+const VERSION: &str = "v2.3.3";
 
 // =============================================================================
 //  print_banner
@@ -308,19 +308,16 @@ pub fn print_help(cfg: &Config, dry_run: bool, history_enabled: bool, ctx_size: 
     // CLI flags
     println!("  {}", "LAUNCH FLAGS".white().bold());
     println!(
-        "    {}  {}",
-        "--dry  / -d   ".yellow().bold(),
-        "Dry-run: show commands but never execute them"
+        "    {}  Dry-run: show commands but never execute them",
+        "--dry  / -d   ".yellow().bold()
     );
     println!(
-        "    {}  {}",
-        "--no-history  ".yellow().bold(),
-        "Disable shell history appending for this session"
+        "    {}  Disable shell history appending for this session",
+        "--no-history  ".yellow().bold()
     );
     println!(
-        "    {}  {}",
-        "--no-context  ".yellow().bold(),
-        "Disable multi-turn context for this session"
+        "    {}  Disable multi-turn context for this session",
+        "--no-context  ".yellow().bold()
     );
     println!();
 
