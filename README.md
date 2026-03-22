@@ -14,6 +14,12 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/yo-rust/pulls)
 
+<a href="https://paulfleury.com/github/yo-rust.jpeg">
+  <img src="https://paulfleury.com/github/yo-rust.jpeg" alt="Hamerspoon Find my Cursor LUA Script" with="600" />
+</a>
+
+*Click the image to view full resolution*
+
 </div>
 
 ---
