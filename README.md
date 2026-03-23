@@ -14,6 +14,12 @@
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue?style=for-the-badge)]()
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/mang-sh/pulls)
 
+<a href="https://paulfleury.com/github/mang-sh.jpeg">
+  <img src="https://paulfleury.com/github/mang-sh.jpeg" alt="The All Seeing Eye — domain monitor dashboard" width="700" />
+</a>
+
+*Click image to view full resolution*
+
 </div>
 
 ---
