@@ -69,7 +69,7 @@ function Invoke-Native {
 
 # -- Constants ----------------------------------------------------------------
 $REPO_URL = "https://github.com/paulfxyz/mang-sh"
-$RAW_BASE  = "https://mang.sh"
+$RAW_BASE = "https://raw.githubusercontent.com/paulfxyz/mang-sh/main"
 $ZIP_URL = "https://github.com/paulfxyz/mang-sh/archive/refs/heads/main.zip"
 $INSTALL_DIR = Join-Path $env:LOCALAPPDATA "mang-sh\bin"
 $TMP_DIR   = Join-Path $env:TEMP ("mang-sh-install-" + [System.Guid]::NewGuid().ToString("N").Substring(0,8))

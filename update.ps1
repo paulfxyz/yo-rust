@@ -22,7 +22,7 @@ function Write-Fail {
     exit 1
 }
 
-$RAW_BASE = "https://mang.sh"
+$RAW_BASE = "https://raw.githubusercontent.com/paulfxyz/mang-sh/main"
 $ZIP_URL = "https://github.com/paulfxyz/mang-sh/archive/refs/heads/main.zip"
 $TMP_DIR  = Join-Path $env:TEMP ("mang-sh-update-" + [System.Guid]::NewGuid().ToString("N").Substring(0,8))
 

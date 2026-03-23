@@ -24,7 +24,7 @@
 set -euo pipefail
 
 REPO="https://github.com/paulfxyz/mang-sh"
-RAW="https://mang.sh"
+RAW="https://raw.githubusercontent.com/paulfxyz/mang-sh/main"
 TMP_DIR="$(mktemp -d)"
 SUDO=""
 
