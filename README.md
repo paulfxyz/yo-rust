@@ -1,4 +1,4 @@
-# 句芒 mang.sh
+# mang.sh (3.0.1) 句芒 
 
 <div align="center">
 
